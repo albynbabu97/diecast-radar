@@ -1,0 +1,48 @@
+{
+  "expo": {
+    "name": "Diecast Radar",
+    "slug": "diecast-radar",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/car.png",
+    "scheme": "diecastradar",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "icon": "./assets/expo.icon"
+    },
+    "android": {
+      "package": "com.albynbabu.diecastradar",
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/images/car.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/car32x.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#ffffff",
+          "image": "./assets/images/car.png",
+          "imageWidth": 76
+        }
+      ],
+      "expo-font"
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "21052403-ab12-4045-ba8d-783a4b1d564a"
+      }
+    }
+  }
+}
