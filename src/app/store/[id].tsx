@@ -6,10 +6,9 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  BackHandler,
   Dimensions,
   Modal,
-  NativeScrollEvent,
-  NativeSyntheticEvent,
   Platform,
   Share,
   StatusBar,
@@ -34,11 +33,10 @@ import {
 const API_URL = process.env.EXPO_PUBLIC_API_URL || '';
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-// Map occupies ~42% of screen when expanded; collapses to a compact strip.
-const MAP_EXPANDED_HEIGHT = Math.round(SCREEN_HEIGHT * 0.42);
-const MAP_COLLAPSED_HEIGHT = 88;
-const MAP_COLLAPSE_RANGE = MAP_EXPANDED_HEIGHT - MAP_COLLAPSED_HEIGHT;
+const MAP_HEIGHT = Math.round(SCREEN_HEIGHT * 0.42);
 const HEADER_ROW_HEIGHT = 64;
+// Scroll distance over which the map fully hides.
+const MAP_HIDE_RANGE = MAP_HEIGHT;
 
 const showToast = (message: string) => {
   if (Platform.OS === 'android') {
@@ -51,9 +49,7 @@ const showToast = (message: string) => {
 export default function StoreDetailScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const scrollRef = useRef<any>(null);
   const scrollY = useRef(new Animated.Value(0)).current;
-  const isSnappingRef = useRef(false);
 
   const { id, storeData } = useLocalSearchParams<{
     id: string;
@@ -71,34 +67,61 @@ export default function StoreDetailScreen() {
   const [isLoading, setIsLoading] = useState(!store);
   const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [showDirectionsFab, setShowDirectionsFab] = useState(true);
 
   const mapTopOffset = insets.top + HEADER_ROW_HEIGHT;
 
-  const mapHeight = scrollY.interpolate({
-    inputRange: [0, MAP_COLLAPSE_RANGE],
-    outputRange: [MAP_EXPANDED_HEIGHT, MAP_COLLAPSED_HEIGHT],
-    extrapolate: 'clamp',
-  });
+  // Native-driver transforms — no layout thrashing while scrolling.
+  const mapAnimatedStyle = useMemo(
+    () => ({
+      opacity: scrollY.interpolate({
+        inputRange: [0, MAP_HIDE_RANGE * 0.55, MAP_HIDE_RANGE],
+        outputRange: [1, 0.35, 0],
+        extrapolate: 'clamp',
+      }),
+      transform: [
+        {
+          translateY: scrollY.interpolate({
+            inputRange: [0, MAP_HIDE_RANGE],
+            outputRange: [0, -MAP_HEIGHT * 0.55],
+            extrapolate: 'clamp',
+          }),
+        },
+      ],
+    }),
+    [scrollY],
+  );
 
-  const directionsOpacity = scrollY.interpolate({
-    inputRange: [0, MAP_COLLAPSE_RANGE * 0.55],
-    outputRange: [1, 0],
-    extrapolate: 'clamp',
-  });
+  const directionsOpacity = useMemo(
+    () =>
+      scrollY.interpolate({
+        inputRange: [0, MAP_HIDE_RANGE * 0.25],
+        outputRange: [1, 0],
+        extrapolate: 'clamp',
+      }),
+    [scrollY],
+  );
 
-  const sheetRadius = scrollY.interpolate({
-    inputRange: [0, MAP_COLLAPSE_RANGE],
-    outputRange: [24, 16],
-    extrapolate: 'clamp',
-  });
+  const goHome = useCallback(() => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace('/');
+  }, [router]);
 
+  // Hardware back always returns to home from this screen.
   useEffect(() => {
-    const listenerId = scrollY.addListener(({ value }) => {
-      setShowDirectionsFab(value < MAP_COLLAPSE_RANGE * 0.45);
-    });
-    return () => scrollY.removeListener(listenerId);
-  }, [scrollY]);
+    const onBackPress = () => {
+      if (deleteConfirmVisible) {
+        setDeleteConfirmVisible(false);
+        return true;
+      }
+      goHome();
+      return true;
+    };
+    const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => sub.remove();
+  }, [deleteConfirmVisible, goHome]);
 
   const fetchStoreById = useCallback(async () => {
     if (!API_URL || !id) return;
@@ -132,30 +155,6 @@ export default function StoreDetailScreen() {
     return tags;
   }, [store]);
 
-  const snapScroll = useCallback((offsetY: number) => {
-    if (isSnappingRef.current) return;
-
-    const shouldCollapse = offsetY > MAP_COLLAPSE_RANGE * 0.38;
-    const targetY = shouldCollapse ? MAP_COLLAPSE_RANGE : 0;
-
-    if (Math.abs(offsetY - targetY) < 4) return;
-
-    isSnappingRef.current = true;
-    scrollRef.current?.scrollTo({ y: targetY, animated: true });
-
-    // Release snap lock after the animated scroll settles.
-    setTimeout(() => {
-      isSnappingRef.current = false;
-    }, 320);
-  }, []);
-
-  const handleScrollEnd = useCallback(
-    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      snapScroll(event.nativeEvent.contentOffset.y);
-    },
-    [snapScroll],
-  );
-
   const handleShare = () => {
     if (!store) return;
     Share.share({ message: buildStoreShareMessage(store) });
@@ -163,7 +162,7 @@ export default function StoreDetailScreen() {
 
   const handleEdit = () => {
     if (!store) return;
-    router.push({
+    router.replace({
       pathname: '/',
       params: { editStoreData: JSON.stringify(store) },
     });
@@ -182,7 +181,7 @@ export default function StoreDetailScreen() {
           storeId: store.id,
         }),
       });
-      router.back();
+      goHome();
     } catch {
       showToast('Failed to delete store.');
     } finally {
@@ -205,10 +204,7 @@ export default function StoreDetailScreen() {
         <Stack.Screen options={{ headerShown: false }} />
         <Feather name="map-pin" size={40} color={COLORS.inactive} />
         <Text style={styles.emptyTitle}>Store Not Found</Text>
-        <TouchableOpacity
-          style={styles.backLinkBtn}
-          onPress={() => router.back()}
-        >
+        <TouchableOpacity style={styles.backLinkBtn} onPress={goHome}>
           <Text style={styles.backLinkText}>Go Back</Text>
         </TouchableOpacity>
       </View>
@@ -224,11 +220,10 @@ export default function StoreDetailScreen() {
       <Stack.Screen options={{ headerShown: false }} />
       <StatusBar barStyle="dark-content" backgroundColor={COLORS.card} />
 
-      {/* Fixed header — always on top */}
       <SafeAreaView edges={['top']} style={styles.headerSafeArea}>
         <View style={styles.headerRow}>
           <TouchableOpacity
-            onPress={() => router.back()}
+            onPress={goHome}
             style={styles.iconBtn}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
@@ -249,15 +244,12 @@ export default function StoreDetailScreen() {
         </View>
       </SafeAreaView>
 
-      {/* Pinned map — absolute so scroll content slides over it cleanly */}
       {hasCoords ? (
         <Animated.View
           style={[
             styles.mapShell,
-            {
-              top: mapTopOffset,
-              height: mapHeight,
-            },
+            { top: mapTopOffset, height: MAP_HEIGHT },
+            mapAnimatedStyle,
           ]}
           pointerEvents="box-none"
         >
@@ -270,7 +262,7 @@ export default function StoreDetailScreen() {
           />
           <Animated.View
             style={[styles.directionsOverlay, { opacity: directionsOpacity }]}
-            pointerEvents={showDirectionsFab ? 'auto' : 'none'}
+            pointerEvents="box-none"
           >
             <TouchableOpacity
               style={styles.directionsFab}
@@ -284,36 +276,24 @@ export default function StoreDetailScreen() {
         </Animated.View>
       ) : null}
 
-      {/* Scroll content overlaps the map via paddingTop + rounded sheet */}
       <Animated.ScrollView
-        ref={scrollRef}
         style={styles.detailsScroll}
         contentContainerStyle={[
           styles.detailsContent,
           {
-            // ScrollView already sits below the header — only offset by map height.
-            // Small overlap so the sheet sits flush on the map edge.
-            paddingTop: hasCoords ? MAP_EXPANDED_HEIGHT - 16 : 16,
+            paddingTop: hasCoords ? MAP_HEIGHT - 16 : 16,
             paddingBottom: insets.bottom + 32,
           },
         ]}
         showsVerticalScrollIndicator={false}
         scrollEventThrottle={16}
         bounces
-        decelerationRate="normal"
         onScroll={Animated.event(
           [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-          { useNativeDriver: false },
+          { useNativeDriver: true },
         )}
-        onScrollEndDrag={handleScrollEnd}
-        onMomentumScrollEnd={handleScrollEnd}
       >
-        <Animated.View
-          style={[
-            styles.detailsSheet,
-            { borderTopLeftRadius: sheetRadius, borderTopRightRadius: sheetRadius },
-          ]}
-        >
+        <View style={styles.detailsSheet}>
           {!hasCoords ? (
             <View style={styles.noMapFallback}>
               <Feather name="map" size={32} color={COLORS.inactive} />
@@ -425,7 +405,7 @@ export default function StoreDetailScreen() {
               )}
             </TouchableOpacity>
           </View>
-        </Animated.View>
+        </View>
       </Animated.ScrollView>
 
       <Modal
@@ -557,6 +537,8 @@ const styles = StyleSheet.create({
   },
   detailsSheet: {
     backgroundColor: COLORS.bg,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     paddingHorizontal: 16,
     paddingTop: 16,
     minHeight: SCREEN_HEIGHT * 0.55,

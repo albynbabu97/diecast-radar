@@ -2,8 +2,8 @@ import { Feather } from "@expo/vector-icons";
 import Slider from "@react-native-community/slider";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Location from "expo-location";
-import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   BackHandler,
@@ -112,37 +112,39 @@ export default function Index() {
   const lastBackPressed = useRef(0);
   const skipRadiusFetchRef = useRef(true);
 
-  // --- HARDWARE BACK ---
-  useEffect(() => {
-    const onBackPress = () => {
-      if (deleteConfirmVisible) {
-        setDeleteConfirmVisible(false);
-        return true;
-      }
-      if (isModalVisible) {
-        setModalVisible(false);
-        return true;
-      }
-      if (view === "add") {
-        closeForm();
-        return true;
-      }
-      if (view === "radar") {
-        const now = Date.now();
-        if (now - lastBackPressed.current < 2000) {
-          BackHandler.exitApp();
+  // Only intercept Android back while this screen is focused (not on store detail).
+  useFocusEffect(
+    useCallback(() => {
+      const onBackPress = () => {
+        if (deleteConfirmVisible) {
+          setDeleteConfirmVisible(false);
           return true;
         }
-        lastBackPressed.current = now;
-        if (Platform.OS === "android")
-          ToastAndroid.show("Press back again to exit", ToastAndroid.SHORT);
-        return true;
-      }
-      return false;
-    };
-    const sub = BackHandler.addEventListener("hardwareBackPress", onBackPress);
-    return () => sub.remove();
-  }, [view, isModalVisible, deleteConfirmVisible]);
+        if (isModalVisible) {
+          setModalVisible(false);
+          return true;
+        }
+        if (view === "add") {
+          closeForm();
+          return true;
+        }
+        if (view === "radar") {
+          const now = Date.now();
+          if (now - lastBackPressed.current < 2000) {
+            BackHandler.exitApp();
+            return true;
+          }
+          lastBackPressed.current = now;
+          if (Platform.OS === "android")
+            ToastAndroid.show("Press back again to exit", ToastAndroid.SHORT);
+          return true;
+        }
+        return false;
+      };
+      const sub = BackHandler.addEventListener("hardwareBackPress", onBackPress);
+      return () => sub.remove();
+    }, [view, isModalVisible, deleteConfirmVisible]),
+  );
 
   // --- INITIAL LOCATION CHECK ---
   useEffect(() => {
@@ -254,7 +256,13 @@ export default function Index() {
   };
 
   const fetchStores = async (isRefresh = false) => {
-    if (!API_URL) return;
+    if (!API_URL) {
+      ToastAndroid.show(
+        "API URL is not configured for this build.",
+        ToastAndroid.LONG,
+      );
+      return;
+    }
     if (!isRefresh) setIsLoading(true);
     try {
       const lat = location?.latitude || 0;

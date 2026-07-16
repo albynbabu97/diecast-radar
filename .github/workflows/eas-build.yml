@@ -29,8 +29,33 @@ jobs:
       - name: 📦 Install dependencies
         run: npm install
 
-      - name: 🚀 Build Android App (APK)
-        run: eas build --platform android --profile preview --non-interactive
+      # GitHub Actions env vars are NOT available on EAS cloud builders.
+      # Sync EXPO_PUBLIC_* secrets into EAS so the JS bundle gets the real values.
+      - name: 🔐 Sync env vars to EAS
         env:
           EXPO_PUBLIC_API_URL: ${{ secrets.EXPO_PUBLIC_API_URL }}
           EXPO_PUBLIC_GOOGLE_MAPS_API_KEY: ${{ secrets.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY }}
+        run: |
+          if [ -z "$EXPO_PUBLIC_API_URL" ] || [ -z "$EXPO_PUBLIC_GOOGLE_MAPS_API_KEY" ]; then
+            echo "Missing EXPO_PUBLIC_* GitHub secrets"
+            exit 1
+          fi
+
+          eas env:create \
+            --name EXPO_PUBLIC_API_URL \
+            --value "$EXPO_PUBLIC_API_URL" \
+            --visibility sensitive \
+            --environment preview \
+            --force \
+            --non-interactive
+
+          eas env:create \
+            --name EXPO_PUBLIC_GOOGLE_MAPS_API_KEY \
+            --value "$EXPO_PUBLIC_GOOGLE_MAPS_API_KEY" \
+            --visibility sensitive \
+            --environment preview \
+            --force \
+            --non-interactive
+
+      - name: 🚀 Build Android App (APK)
+        run: eas build --platform android --profile preview --non-interactive

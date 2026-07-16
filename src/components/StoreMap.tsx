@@ -1,12 +1,11 @@
 import { Feather } from '@expo/vector-icons';
-import { useMemo, useRef } from 'react';
+import { useMemo } from 'react';
 import {
   Dimensions,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
-  type LayoutChangeEvent,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
@@ -18,10 +17,8 @@ type StoreMapProps = {
   lng: number;
   name: string;
   height?: number;
-  // When true, map fills its parent (used with animated height containers).
   fillContainer?: boolean;
   containerStyle?: StyleProp<ViewStyle>;
-  // Disable pan/zoom so ScrollView gestures are not blocked on the detail page.
   interactive?: boolean;
   onNavigate?: () => void;
 };
@@ -39,9 +36,6 @@ export default function StoreMap({
   interactive = true,
   onNavigate,
 }: StoreMapProps) {
-  const mapRef = useRef<MapView>(null);
-  const lastLayoutHeightRef = useRef(0);
-
   const mapHeight = useMemo(() => {
     if (fillContainer) return undefined;
     if (height) return height;
@@ -58,17 +52,8 @@ export default function StoreMap({
     [lat, lng],
   );
 
-  // Keep marker centered when the collapsible container changes height.
-  const handleContainerLayout = (event: LayoutChangeEvent) => {
-    const nextHeight = event.nativeEvent.layout.height;
-    if (Math.abs(nextHeight - lastLayoutHeightRef.current) < 6) return;
-    lastLayoutHeightRef.current = nextHeight;
-    mapRef.current?.animateToRegion(region, 150);
-  };
-
   return (
     <View
-      onLayout={fillContainer ? handleContainerLayout : undefined}
       style={[
         styles.container,
         fillContainer ? styles.containerFill : { height: mapHeight },
@@ -76,10 +61,8 @@ export default function StoreMap({
       ]}
     >
       <MapView
-        ref={mapRef}
         style={styles.map}
         initialRegion={region}
-        // Hide default provider tiles so only free OpenStreetMap tiles render.
         mapType="none"
         scrollEnabled={interactive}
         zoomEnabled={interactive}
