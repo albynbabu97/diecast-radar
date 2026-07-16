@@ -29,7 +29,7 @@
         {
           "backgroundColor": "#ffffff",
           "image": "./assets/images/car.png",
-          "imageWidth": 512
+          "imageWidth": 64
         }
       ],
       "expo-font"
