@@ -2,7 +2,7 @@ import { Feather } from "@expo/vector-icons";
 import Slider from "@react-native-community/slider";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Location from "expo-location";
-import { Stack } from "expo-router";
+import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -11,7 +11,6 @@ import {
   ImageBackground,
   KeyboardAvoidingView,
   LayoutAnimation,
-  Linking,
   Modal,
   Platform,
   RefreshControl,
@@ -46,43 +45,17 @@ if (
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-// --- FONTS ---
-import {
-  Poppins_400Regular,
-  Poppins_500Medium,
-  Poppins_600SemiBold,
-  Poppins_700Bold,
-  Poppins_800ExtraBold,
-  useFonts,
-} from "@expo-google-fonts/poppins";
+import { COLORS } from "@/constants/theme";
+import type { Store } from "@/types/store";
+import { buildStoreShareMessage, openStoreInMaps } from "@/utils/store";
 
 // --- ENV CONFIGURATION ---
 const API_URL = process.env.EXPO_PUBLIC_API_URL || "";
 const GOOGLE_MAPS_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || "";
 
-const COLORS = {
-  bg: "#F3F4F6",
-  card: "#FFFFFF",
-  cardBorder: "#F3F4F6",
-  primary: "#EF4444",
-  primaryDark: "#DC2626",
-  accent: "#8B5CF6",
-  text: "#111827",
-  textMuted: "#6B7280",
-  success: "#10B981",
-  inactive: "#9CA3AF",
-  tagBg: "#F9FAFB",
-  tagBorder: "#E5E7EB",
-};
-
 export default function Index() {
-  const [fontsLoaded] = useFonts({
-    Poppins_400Regular,
-    Poppins_500Medium,
-    Poppins_600SemiBold,
-    Poppins_700Bold,
-    Poppins_800ExtraBold,
-  });
+  const router = useRouter();
+  const { editStoreData } = useLocalSearchParams<{ editStoreData?: string }>();
 
   const flatListRef = useRef<FlatList>(null);
 
@@ -98,7 +71,7 @@ export default function Index() {
   >("loading");
 
   const [viewMode, setViewMode] = useState<"nearby" | "all">("nearby");
-  const [radius, setRadius] = useState(8);
+  const [radius, setRadius] = useState(10);
   const [showFilters, setShowFilters] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -137,6 +110,7 @@ export default function Index() {
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const skipSearchRef = useRef<boolean>(false);
   const lastBackPressed = useRef(0);
+  const skipRadiusFetchRef = useRef(true);
 
   // --- HARDWARE BACK ---
   useEffect(() => {
@@ -177,7 +151,22 @@ export default function Index() {
 
   useEffect(() => {
     if (location || viewMode === "all") fetchStores();
-  }, [location, radius, viewMode]);
+  }, [location, viewMode]);
+
+  // Debounce radius API calls so the label can update live while dragging.
+  useEffect(() => {
+    if (skipRadiusFetchRef.current) {
+      skipRadiusFetchRef.current = false;
+      return;
+    }
+    if (viewMode !== "nearby") return;
+
+    const timer = setTimeout(() => {
+      if (location) fetchStores();
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [radius]);
 
   useEffect(() => {
     if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
@@ -390,22 +379,30 @@ export default function Index() {
     setView("add");
   };
 
-  const getStoreMapUrl = (item: {
-    name: string;
-    lat: number | string;
-    lng: number | string;
-  }) => {
-    const query = `${item.lat},${item.lng}(${item.name})`;
-    return Platform.select({
-      ios: `maps:0,0?q=${encodeURIComponent(query)}`,
-      android: `geo:0,0?q=${encodeURIComponent(query)}`,
-      default: `https://maps.google.com/?q=${encodeURIComponent(query)}`,
-    })!;
+  // Open edit form when returning from the store detail page.
+  useEffect(() => {
+    if (!editStoreData) return;
+    try {
+      const store = JSON.parse(editStoreData) as Store;
+      handleEdit(store);
+      router.setParams({ editStoreData: undefined });
+    } catch {
+      // Ignore malformed navigation params.
+    }
+  }, [editStoreData]);
+
+  const handleNavigation = (item: Store) => {
+    openStoreInMaps(item);
   };
 
-  const handleNavigation = (item: any) => {
-    if (!item?.lat || !item?.lng) return;
-    Linking.openURL(getStoreMapUrl(item));
+  const openStoreDetail = (item: Store) => {
+    router.push({
+      pathname: "/store/[id]",
+      params: {
+        id: item.id,
+        storeData: JSON.stringify(item),
+      },
+    });
   };
 
   const showMoreOptions = (item: any) => {
@@ -438,13 +435,6 @@ export default function Index() {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setView("add");
   };
-
-  if (!fontsLoaded)
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
-      </View>
-    );
 
   const FilterPill = ({ label, active, onPress, flex }: any) => (
     <TouchableOpacity
@@ -507,7 +497,7 @@ export default function Index() {
                   maximumValue={50}
                   step={1}
                   value={radius}
-                  onSlidingComplete={setRadius}
+                  onValueChange={setRadius}
                   minimumTrackTintColor={COLORS.primary}
                   maximumTrackTintColor={COLORS.tagBorder}
                   thumbTintColor={COLORS.primary}
@@ -634,7 +624,11 @@ export default function Index() {
             )
           }
           renderItem={({ item }) => (
-            <View style={styles.card}>
+            <TouchableOpacity
+              style={styles.card}
+              onPress={() => openStoreDetail(item)}
+              activeOpacity={0.75}
+            >
               <View style={styles.cardTopRow}>
                 <View style={{ flex: 1, paddingRight: 12 }}>
                   <Text style={styles.cardTitle} numberOfLines={1}>
@@ -725,7 +719,7 @@ export default function Index() {
                   />
                 </TouchableOpacity>
               </View>
-            </View>
+            </TouchableOpacity>
           )}
         />
       )}
@@ -1143,37 +1137,11 @@ export default function Index() {
               style={styles.modalOption}
               onPress={() => {
                 setModalVisible(false);
-                const name = selectedStore?.name || "";
-                const address = selectedStore?.address
-                  ? `\nAddress: ${selectedStore.address}`
-                  : "";
-                const mapUrl =
-                  selectedStore?.lat && selectedStore?.lng
-                    ? `\nLocation: ${getStoreMapUrl(selectedStore)}`
-                    : "";
-                let availableItems = [];
-                if (selectedStore?.hw) availableItems.push("Hot Wheels");
-                if (selectedStore?.mb) availableItems.push("Matchbox");
-                if (selectedStore?.other) availableItems.push("Other");
-                const available = availableItems.length
-                  ? `\nAvailable: ${availableItems.join(", ")}`
-                  : "";
-                const format = selectedStore?.bundle
-                  ? selectedStore.bundle
-                  : "";
-                const formatText = format ? `\nPack: ${format}` : "";
-                const price = selectedStore?.price
-                  ? `\nPrice: ${selectedStore.price}`
-                  : "";
-                Share.share({
-                  message:
-                    `Diecast stock at ${name}` +
-                    address +
-                    mapUrl +
-                    available +
-                    formatText +
-                    price,
-                });
+                if (selectedStore) {
+                  Share.share({
+                    message: buildStoreShareMessage(selectedStore),
+                  });
+                }
               }}
             >
               <View style={styles.modalIconBg}>
