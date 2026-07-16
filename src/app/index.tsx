@@ -29,7 +29,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 // LayoutAnimation on Android needs this only on the old architecture.
 function isNewArchitectureEnabled(): boolean {
-  const g = global as typeof global & {
+  const g = globalThis as typeof globalThis & {
     _IS_FABRIC_?: boolean;
     nativeFabricUIManager?: unknown;
     RN$Bridgeless?: boolean;
@@ -107,7 +107,7 @@ export default function Index() {
   } | null>(null);
   const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
 
-  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const skipSearchRef = useRef<boolean>(false);
   const lastBackPressed = useRef(0);
   const skipRadiusFetchRef = useRef(true);
