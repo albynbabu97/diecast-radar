@@ -96,6 +96,7 @@ export default function Index() {
   const [mapSearchQuery, setMapSearchQuery] = useState("");
   const [mapResults, setMapResults] = useState<any[]>([]);
   const [isSearchingMap, setIsSearchingMap] = useState(false);
+  const [isMapSearchFocused, setIsMapSearchFocused] = useState(false);
 
   // Custom Modal States
   const [selectedStore, setSelectedStore] = useState<any | null>(null);
@@ -238,7 +239,18 @@ export default function Index() {
       const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(query)}&key=${GOOGLE_MAPS_API_KEY}`;
       const res = await fetch(url);
       const json = await res.json();
-      if (json.results) setMapResults(json.results.slice(0, 4));
+      // OK / ZERO_RESULTS are the only healthy statuses; anything else
+      // (REQUEST_DENIED for an expired key, OVER_QUERY_LIMIT, etc.) must
+      // surface instead of silently showing "no results".
+      if (json.status === "OK" || json.status === "ZERO_RESULTS") {
+        setMapResults((json.results || []).slice(0, 4));
+      } else {
+        setMapResults([]);
+        ToastAndroid.show(
+          json.error_message || `Places search failed: ${json.status}`,
+          ToastAndroid.LONG,
+        );
+      }
     } catch (error) {
       console.error(error);
     } finally {
@@ -461,6 +473,14 @@ export default function Index() {
     </TouchableOpacity>
   );
 
+  const hasActiveFilters =
+    !!searchQuery ||
+    filterBrand.hw ||
+    filterBrand.mb ||
+    filterBrand.other ||
+    !!filterPrice ||
+    !!filterBundle;
+
   const renderRadarBoard = () => (
     <View style={styles.radarContainer}>
       <View style={styles.filterCard}>
@@ -626,9 +646,36 @@ export default function Index() {
                 </TouchableOpacity>
               </View>
             ) : (
-              <Text style={styles.emptyText}>
-                No locations match your radar.
-              </Text>
+              <View style={styles.emptyStateContainer}>
+                <View style={styles.emptyIconCircle}>
+                  <Feather name="search" size={26} color={COLORS.inactive} />
+                </View>
+                <Text style={styles.emptyTitle}>No stores found</Text>
+                <Text style={styles.emptyText}>
+                  {viewMode === "nearby"
+                    ? `We couldn't find any stores within ${radius} km of you.`
+                    : hasActiveFilters
+                      ? "No stores match your current filters."
+                      : "No stores have been added yet."}
+                </Text>
+
+                {viewMode === "nearby" && (
+                  <View style={styles.radiusChip}>
+                    <Feather name="target" size={13} color={COLORS.primary} />
+                    <Text style={styles.radiusChipText}>
+                      Searching within {radius} km
+                    </Text>
+                  </View>
+                )}
+
+                {hasActiveFilters && (
+                  <Text style={styles.emptyHint}>
+                    {viewMode === "nearby"
+                      ? "Try widening the radius or clearing filters."
+                      : "Try clearing some filters."}
+                  </Text>
+                )}
+              </View>
             )
           }
           renderItem={({ item }) => (
@@ -791,6 +838,8 @@ export default function Index() {
               placeholderTextColor={COLORS.textMuted}
               value={mapSearchQuery}
               onChangeText={setMapSearchQuery}
+              onFocus={() => setIsMapSearchFocused(true)}
+              onBlur={() => setIsMapSearchFocused(false)}
             />
             {isSearchingMap && (
               <ActivityIndicator
@@ -801,7 +850,7 @@ export default function Index() {
             )}
           </View>
 
-          {mapResults.length > 0 && (
+          {isMapSearchFocused && mapResults.length > 0 && (
             <View style={styles.mapResultsBox}>
               {mapResults.map((place, index) => (
                 <TouchableOpacity
@@ -1515,20 +1564,55 @@ const styles = StyleSheet.create({
     fontFamily: "Poppins_500Medium",
     textAlign: "center",
     color: COLORS.textMuted,
-    marginTop: 40,
-    fontSize: 15,
+    fontSize: 14,
+    lineHeight: 21,
   },
 
   emptyStateContainer: {
     alignItems: "center",
     marginTop: 60,
-    paddingHorizontal: 20,
+    paddingHorizontal: 32,
+  },
+  emptyIconCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: COLORS.tagBg,
+    borderWidth: 1,
+    borderColor: COLORS.tagBorder,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 16,
   },
   emptyTitle: {
     fontFamily: "Poppins_700Bold",
     fontSize: 18,
     color: COLORS.text,
     marginBottom: 8,
+  },
+  radiusChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: "rgba(239, 68, 68, 0.1)",
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+  },
+  radiusChipText: {
+    fontFamily: "Poppins_600SemiBold",
+    fontSize: 12,
+    color: COLORS.primary,
+  },
+  emptyHint: {
+    fontFamily: "Poppins_500Medium",
+    fontSize: 12,
+    color: COLORS.textMuted,
+    textAlign: "center",
+    marginTop: 14,
   },
   retryBtn: {
     backgroundColor: COLORS.tagBg,
@@ -1714,10 +1798,10 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   segmentActive: {
-    backgroundColor: COLORS.card,
-    shadowColor: "#000",
+    backgroundColor: COLORS.primary,
+    shadowColor: COLORS.primary,
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.25,
     shadowRadius: 2,
     elevation: 1,
   },
@@ -1726,7 +1810,7 @@ const styles = StyleSheet.create({
     color: COLORS.textMuted,
     fontSize: 13,
   },
-  segmentTextActive: { color: COLORS.text },
+  segmentTextActive: { color: "#fff" },
 
   saveBtnGradient: {
     padding: 18,

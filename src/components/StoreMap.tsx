@@ -31,6 +31,12 @@ type StoreMapProps = {
 const TILE_SIZE = 256;
 const ZOOM = 15;
 
+// OSM's tile usage policy rejects requests without an identifying User-Agent
+// (a generic/absent one gets a 403), so every tile request must carry one.
+const TILE_HEADERS = {
+  'User-Agent': 'DiecastRadar/1.0 (https://github.com/albynbabu/diecast-radar)',
+};
+
 const tileUrl = (x: number, y: number, z: number) =>
   `https://tile.openstreetmap.org/${z}/${x}/${y}.png`;
 
@@ -136,7 +142,7 @@ export default function StoreMap({
         {tiles.map((tile) => (
           <Image
             key={tile.key}
-            source={{ uri: tile.uri }}
+            source={{ uri: tile.uri, headers: TILE_HEADERS }}
             style={{
               position: 'absolute',
               width: TILE_SIZE,

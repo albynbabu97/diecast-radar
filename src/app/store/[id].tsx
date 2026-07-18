@@ -257,19 +257,6 @@ export default function StoreDetailScreen() {
             fillContainer
             interactive={false}
           />
-          <Animated.View
-            style={[styles.directionsOverlay, { opacity: directionsOpacity }]}
-            pointerEvents="box-none"
-          >
-            <TouchableOpacity
-              style={styles.directionsFab}
-              onPress={() => openStoreInMaps(store)}
-              activeOpacity={0.85}
-            >
-              <Feather name="navigation" size={18} color="#fff" />
-              <Text style={styles.directionsFabText}>Directions</Text>
-            </TouchableOpacity>
-          </Animated.View>
         </Animated.View>
       ) : null}
 
@@ -405,6 +392,29 @@ export default function StoreDetailScreen() {
         </View>
       </Animated.ScrollView>
 
+      {/* Directions FAB floats above the scroll view so it stays tappable
+          (inside the map shell it sat behind the scroll layer). box-none lets
+          scrolling through the rest of the map region pass through. */}
+      {hasCoords ? (
+        <Animated.View
+          pointerEvents="box-none"
+          style={[
+            styles.directionsFabLayer,
+            { top: mapTopOffset, height: MAP_HEIGHT, opacity: directionsOpacity },
+            { transform: mapAnimatedStyle.transform },
+          ]}
+        >
+          <TouchableOpacity
+            style={styles.directionsFab}
+            onPress={() => openStoreInMaps(store)}
+            activeOpacity={0.85}
+          >
+            <Feather name="navigation" size={18} color="#fff" />
+            <Text style={styles.directionsFabText}>Directions</Text>
+          </TouchableOpacity>
+        </Animated.View>
+      ) : null}
+
       <Modal
         visible={deleteConfirmVisible}
         transparent
@@ -499,8 +509,11 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     backgroundColor: COLORS.tagBg,
   },
-  directionsOverlay: {
-    ...StyleSheet.absoluteFill,
+  directionsFabLayer: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    zIndex: 3,
     justifyContent: "flex-end",
     alignItems: "flex-end",
   },

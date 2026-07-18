@@ -13,7 +13,7 @@
     "android": {
       "package": "com.albynbabu.diecastradar",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#ffffff",
         "foregroundImage": "./assets/images/car.png"
       },
       "predictiveBackGestureEnabled": false
